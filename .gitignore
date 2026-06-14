@@ -1,0 +1,29 @@
+# Keil build output
+*.bak
+*.lst
+*.map
+*.lnp
+*.plg
+*.tmp
+*.axf
+*.hex
+*.bin
+*.elf
+*.d
+*.o
+*.pbi
+*.pbi~
+*.crf
+*.dep
+*.htm
+*.lst
+
+# Keil project files
+*.uvguix.*
+*.uvoptx
+*.uvproj
+*.uvprojx
+
+# Debug
+*.dbgconf
+*.ini
