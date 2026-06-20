@@ -2,22 +2,17 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
+  * @brief          : FreeRTOS 多任务主程序
   *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+  * @note           基于第17届蓝桥杯嵌入式省赛真题改造
+  *                  原裸机 while(1) 超级循环 + 定时器中断，
+  *                  重构为 6 个 FreeRTOS 任务 + 互斥量 + 二值信号量架构。
   ******************************************************************************
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 #include "adc.h"
 #include "tim.h"
 #include "gpio.h"
@@ -25,38 +20,36 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "headfile.h"
+#include "freertos_app.h"
+#include "FreeRTOS.h"
+#include "task.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 /**
@@ -97,31 +90,54 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
-	HAL_ADCEx_Calibration_Start(&hadc2,15);
-	HAL_TIM_Base_Start(&htim1);
-	HAL_TIM_Base_Start(&htim4);
-	HAL_TIM_Base_Start(&htim17);
-	HAL_TIM_Base_Start_IT(&htim7);
-	HAL_TIM_Base_Start_IT(&htim6);
-	HAL_TIM_IC_Start_IT(&htim3,TIM_CHANNEL_1);
-	HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_2);
-	
-  led_show(1,0);
-	LCD_Init();
-	LCD_Clear(Black);
-	LCD_SetBackColor(Black);
-	LCD_SetTextColor(White);
+  /*==================== 外设启动（FreeRTOS调度器启动前完成）====================*/
+  HAL_ADCEx_Calibration_Start(&hadc2, 15);
+
+  /* 启动自由运行定时器（LED延时、按键长按计时） */
+  HAL_TIM_Base_Start(&htim1);
+  HAL_TIM_Base_Start(&htim4);
+  HAL_TIM_Base_Start(&htim17);
+
+  /* 启动周期定时器（带中断） */
+  HAL_TIM_Base_Start_IT(&htim7);   /* 1s 周期 */
+  HAL_TIM_Base_Start_IT(&htim6);   /* 100ms 周期 */
+
+  /* 启动输入捕获（频率测量） */
+  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+
+  /* 启动 PWM 输出 */
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+
+  /*==================== 中断优先级调整（FreeRTOS安全规则）====================
+   * 调用 FromISR API 的中断，优先级数值必须 >= 5
+   */
+  HAL_NVIC_SetPriority(TIM3_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(TIM7_IRQn, 5, 0);
+
+  /*==================== LCD 初始化 ====================*/
+  led_show(1, 0);
+  LCD_Init();
+  LCD_Clear(Black);
+  LCD_SetBackColor(Black);
+  LCD_SetTextColor(White);
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* Call init function for freertos objects (in cmsis_os2.c) */
+  MX_FREERTOS_Init();
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-		key_scan();
-		adc_proc();
-		pwm_proc();
-		lcd_show();
-		led_proc();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
