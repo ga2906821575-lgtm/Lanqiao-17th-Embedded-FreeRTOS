@@ -1,9 +1,11 @@
 # FreeRTOS 改造实战手册
 
 > **项目**: 第17届蓝桥杯嵌入式省赛真题 — FreeRTOS多任务改造  
+> **作者**: 孙苏明  
 > **平台**: STM32G431RBT6 (Cortex-M4F, 80MHz)  
 > **创建日期**: 2026-06-20  
-> **状态**: 持续更新中
+> **最后更新**: 2026-06-22  
+> **状态**: ✅ 板子验证通过（LCD/按键/LED 全部正常）
 
 ---
 
@@ -149,6 +151,16 @@
 | **原因** | 文件最后一行没有换行符（C标准问题） |
 | **解决** | 在文件末尾按一下 Enter，保存 |
 | **影响** | 无害，可忽略 |
+
+### 3.7 烧录成功但板子完全无反应（最隐蔽的坑）
+
+| 项目 | 内容 |
+|------|------|
+| **现象** | Keil 显示 `Verify OK` + `Application running`，但板子 LCD 白屏、按键无反应、所有 LED 不亮 |
+| **原因** | `main.c` 在 `osKernelStart()` 之前调用了 `HAL_TIM_Base_Start_IT()` / `HAL_TIM_IC_Start_IT()`，定时器中断立刻就可能触发，中断回调里调用 `xSemaphoreGiveFromISR`，但**调度器还没启动**——直接 hard fault，板子"死锁" |
+| **症状识别** | LCD 白屏（说明 LCD 初始化在 USER CODE 2 阶段就完成了，流程能跑到 LCD_Init）；按键无反应（说明任务根本没启动） |
+| **解决** | 调度器启动前：只 `HAL_NVIC_SetPriority()` + `HAL_NVIC_DisableIRQ()`；调度器启动后：在第一个任务里（通常是 Task_Sensor）调用 `HAL_TIM_*_Start_IT()` + `HAL_NVIC_EnableIRQ()` |
+| **代码示例** | 见 `README_FREERTOS.md` 第 3 节"启动顺序铁律" |
 
 ---
 

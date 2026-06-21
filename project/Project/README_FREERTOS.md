@@ -1,5 +1,9 @@
 # FreeRTOS 改造版项目说明
 
+> **作者**: 孙苏明  
+> **平台**: STM32G431RBT6 (Cortex-M4F, 80MHz)  
+> **架构**: FreeRTOS 多任务系统（6 任务 + 3 互斥量 + 2 二值信号量）
+
 ## 项目概述
 
 本项目基于**第17届蓝桥杯嵌入式省赛真题**（压力/流量监测与控制系统），将原裸机 `while(1)` 超级循环架构，重构为 **FreeRTOS 多任务架构**。
@@ -195,7 +199,35 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 - 实际业务逻辑（Q累计、PWM调节）放到任务中执行
 - 这是 RTOS 编程的**黄金法则**：ISR 要短，任务做重活
 
-### 3. 互斥量 vs 裸机全局变量
+### 3. 启动顺序铁律：定时器中断必须在调度器启动后开启
+
+**坑**：如果在 `osKernelStart()` 之前调用 `HAL_TIM_Base_Start_IT()`，定时器中断立刻就可能触发。中断回调里如果调 `xSemaphoreGiveFromISR`——而这时调度器还没起来——直接 hard fault，板子"完全死"。
+
+**正确做法**：
+
+`main.c`（调度器启动前）：
+```c
+HAL_NVIC_SetPriority(TIM3_IRQn, 5, 0);
+HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 5, 0);
+HAL_NVIC_SetPriority(TIM7_IRQn, 5, 0);
+HAL_NVIC_DisableIRQ(TIM3_IRQn);       // 关键：屏蔽中断
+HAL_NVIC_DisableIRQ(TIM6_DAC_IRQn);
+HAL_NVIC_DisableIRQ(TIM7_IRQn);
+
+// ... osKernelInitialize(); MX_FREERTOS_Init(); osKernelStart();
+```
+
+`freertos_app.c Task_Sensor`（调度器已起来）：
+```c
+HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+HAL_TIM_Base_Start_IT(&htim6);
+HAL_TIM_Base_Start_IT(&htim7);
+HAL_NVIC_EnableIRQ(TIM3_IRQn);
+HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
+HAL_NVIC_EnableIRQ(TIM7_IRQn);
+```
+
+### 4. 互斥量 vs 裸机全局变量
 
 原裸机代码中，`P`、`F`、`D` 等全局变量被中断和主循环同时访问，存在**数据竞争**：
 - `double F` 是 64 位，在 32 位 ARM 上需要两条指令读写，可能被中断打断
@@ -274,6 +306,18 @@ while (1) {
 
 ---
 
-**改造日期**: 2026-06-20  
+**改造日期**: 2026-06-22  
 **原始项目**: 第17届蓝桥杯嵌入式省赛真题 — 压力/流量监测与控制系统  
 **目标平台**: STM32G431RBT6 (Cortex-M4F, 80MHz)
+
+## 更新日志
+
+### 2026-06-22
+- 修复启动顺序问题：定时器中断必须在 `osKernelStart()` 之后开启，否则中断回调中的 `xSemaphoreGiveFromISR` 在调度器未启动状态下调用导致 hard fault
+- `main.c`：调度器启动前只设 NVIC 优先级并显式 DisableIRQ
+- `freertos_app.c Task_Sensor`：调度器已起来后再开启 TIM3/TIM6/TIM7 中断
+
+### 2026-06-20
+- 完成裸机 → FreeRTOS 多任务架构重构
+- 6 个任务 + 3 互斥量 + 2 二值信号量
+- 验证通过，LCD/按键/LED 全部正常工作
