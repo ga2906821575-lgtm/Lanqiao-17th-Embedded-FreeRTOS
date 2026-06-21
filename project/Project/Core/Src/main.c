@@ -98,22 +98,19 @@ int main(void)
   HAL_TIM_Base_Start(&htim4);
   HAL_TIM_Base_Start(&htim17);
 
-  /* 启动周期定时器（带中断） */
-  HAL_TIM_Base_Start_IT(&htim7);   /* 1s 周期 */
-  HAL_TIM_Base_Start_IT(&htim6);   /* 100ms 周期 */
-
-  /* 启动输入捕获（频率测量） */
-  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
-
-  /* 启动 PWM 输出 */
+  /* 启动 PWM 输出（不带中断，调度器启动后由任务开启中断） */
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
 
-  /*==================== 中断优先级调整（FreeRTOS安全规则）====================
-   * 调用 FromISR API 的中断，优先级数值必须 >= 5
+  /* 注意：带中断的定时器（TIM3/TIM6/TIM7）必须在 osKernelStart() 之后开启
+   * 否则中断回调里的 xSemaphoreGiveFromISR 会在调度器未启动时调用，导致 hard fault
+   * 这里仅设置 NVIC 优先级，不使能中断
    */
   HAL_NVIC_SetPriority(TIM3_IRQn, 5, 0);
   HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 5, 0);
   HAL_NVIC_SetPriority(TIM7_IRQn, 5, 0);
+  HAL_NVIC_DisableIRQ(TIM3_IRQn);
+  HAL_NVIC_DisableIRQ(TIM6_DAC_IRQn);
+  HAL_NVIC_DisableIRQ(TIM7_IRQn);
 
   /*==================== LCD 初始化 ====================*/
   led_show(1, 0);

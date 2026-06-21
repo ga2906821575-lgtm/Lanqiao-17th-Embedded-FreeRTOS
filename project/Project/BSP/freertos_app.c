@@ -136,6 +136,14 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
  */
 static void Task_Sensor(void *pvParameters)
 {
+    /* 调度器已起来，这里安全开启中断驱动的定时器 */
+    HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);   /* 输入捕获（频率测量） */
+    HAL_TIM_Base_Start_IT(&htim6);                /* 100ms 周期中断 */
+    HAL_TIM_Base_Start_IT(&htim7);                /* 1s 周期中断 */
+    HAL_NVIC_EnableIRQ(TIM3_IRQn);
+    HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
+    HAL_NVIC_EnableIRQ(TIM7_IRQn);
+
     TickType_t xLastWakeTime = xTaskGetTickCount();
     (void)pvParameters;
 
